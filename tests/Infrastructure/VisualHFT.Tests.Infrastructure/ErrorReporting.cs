@@ -8,8 +8,8 @@ namespace VisualHFT.DataRetriever.TestingFramework.Core
 {
     public class ErrorReporting
     {
-        public string PluginName { get; internal set; }
-        public string Message { get; internal set; }
-        public ErrorMessageTypes MessageType { get; internal set; }
+        public string PluginName { get; set; }
+        public string Message { get; set; }
+        public ErrorMessageTypes MessageType { get; set; }
     }
 }

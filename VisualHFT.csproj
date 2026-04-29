@@ -10,11 +10,6 @@
 	  <PackageIcon>VisualHFT.png</PackageIcon>
 	  <SupportedOSPlatformVersion>8.0</SupportedOSPlatformVersion>
   </PropertyGroup>
-	<ItemGroup>
-		<AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
-			<_Parameter1>VisualHFT.TriggerService.Tests</_Parameter1>
-		</AssemblyAttribute>
-	</ItemGroup>
   <ItemGroup>
     <Compile Remove="demoTradingCore\**" />
     <Compile Remove="packages\**" />
@@ -140,17 +135,6 @@
     <Content Include="App.config">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <None Include=".github\upgrades\scenarios\dotnet-version-upgrade\plan.md" />
-    <None Include=".github\upgrades\scenarios\dotnet-version-upgrade\scenario-instructions.md" />
-    <None Include=".github\upgrades\scenarios\dotnet-version-upgrade\tasks.md" />
-    <None Include=".github\upgrades\scenarios\dotnet-version-upgrade\tasks\01-prerequisites\progress-details.md" />
-    <None Include=".github\upgrades\scenarios\dotnet-version-upgrade\tasks\02-tier1-foundation\progress-details.md" />
-    <None Include=".github\upgrades\scenarios\dotnet-version-upgrade\tasks\03-tier2-connectors-wpf\progress-details.md" />
-    <None Include=".github\upgrades\scenarios\dotnet-version-upgrade\tasks\04-tier3-apps\progress-details.md" />
-    <None Include=".github\upgrades\scenarios\dotnet-version-upgrade\tasks\05-tier4-main-app\progress-details.md" />
-    <None Include=".github\upgrades\scenarios\dotnet-version-upgrade\tasks\06-solution-validation\progress-details.md" />
-    <None Include=".github\upgrades\scenarios\dotnet-version-upgrade\upgrade-options.md" />
-
     <Resource Include="Images\database.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Resource>

@@ -76,10 +76,15 @@ namespace VisualHFT.DataRetriever.TestingFramework.TestCases
                     output.WriteLine("=".PadRight(60, '='));
                     
                     await Test_BasicReconnection(context, config, output, results);
+                    context.Reset();
                     await Test_ConcurrentExceptions(context, config, output, results);
+                    context.Reset();
                     await Test_RetryLogicAfterFailures(context, config, output, results);
+                    context.Reset();
                     await Test_MaxAttemptsExhaustion(context, config, output, results);
+                    context.Reset();
                     await Test_StatusChangesDuringReconnection(context, config, output, results);
+                    context.Reset();
                     await Test_ReconnectionCoalescing(context, config, output, results);
                     
                     // Summary
@@ -281,9 +286,9 @@ namespace VisualHFT.DataRetriever.TestingFramework.TestCases
                     await context.DataRetriever.StartAsync();
                     if (!await context.WaitForStatusAsync(ePluginStatus.STARTED, config.StatusChangeTimeout))
                         throw new TimeoutException("Plugin did not start");
-                    
-                    // ✅ REDUCED: 5s wait instead of 8s
-                    await Task.Delay(TimeSpan.FromSeconds(5));
+
+                    // Wait for the exception to trigger a stop, then for the plugin to restart
+                    await context.WaitForStatusAsync(ePluginStatus.STOPPED, TimeSpan.FromSeconds(5));
                     var finalStarted = await context.WaitForStatusAsync(ePluginStatus.STARTED, TimeSpan.FromSeconds(5));
                     
                     if (reconnectionAttemptCount >= 1)
@@ -388,57 +393,61 @@ namespace VisualHFT.DataRetriever.TestingFramework.TestCases
         private async Task Test_ReconnectionCoalescing(PluginTestContext context, TestConfiguration config, ITestOutputHelper output, ReconnectionTestResults results)
         {
             output.WriteLine("🔬 TEST 6: Reconnection Coalescing");
-            
+
             try
             {
                 int exceptionCount = 0;
                 int reconnectionDetected = 0;
                 object countLock = new object();
-                
-                var originalStatus = context.Plugin.Status;
+
+                // Use an int (cast of enum) to allow atomic reads/writes via Interlocked
+                int lastTimerStatusInt = (int)context.Plugin.Status;
                 var statusMonitor = new Timer(_ =>
                 {
-                    if (context.Plugin.Status == ePluginStatus.STARTING && originalStatus == ePluginStatus.STOPPED)
+                    var current = context.Plugin.Status;
+                    var previous = (ePluginStatus)Interlocked.Exchange(ref lastTimerStatusInt, (int)current);
+                    if (current == ePluginStatus.STARTING && previous == ePluginStatus.STOPPED)
                     {
-                        lock (countLock) { reconnectionDetected++; }
+                        Interlocked.Increment(ref reconnectionDetected);
                     }
-                    originalStatus = context.Plugin.Status;
                 }, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(100));
-                
+
+                // Throw directly in the subscriber (not via Task.Run) so the plugin sees the exception
                 Action<OrderBook> exceptionTrigger = (lob) =>
                 {
                     if (lob.ProviderID != context.Plugin.Settings.Provider.ProviderID) 
                         return;
-                    
+
+                    int current;
                     lock (countLock)
                     {
                         if (exceptionCount >= 10) return;
-                        exceptionCount++;
-                        Task.Run(() => throw new Exception($"Coalescing test #{exceptionCount}"));
+                        current = ++exceptionCount;
                     }
+                    throw new Exception($"Coalescing test #{current}");
                 };
-                
+
                 HelperOrderBook.Instance.Subscribe(exceptionTrigger);
-                
+
                 try
                 {
                     await context.DataRetriever.StartAsync();
                     if (!await context.WaitForStatusAsync(ePluginStatus.STARTED, config.StatusChangeTimeout))
                         throw new TimeoutException("Plugin did not start");
-                    
-                    // ✅ REDUCED: 3s wait instead of 5s
-                    await Task.Delay(3000);
-                    
-                    // ✅ REDUCED: 10s max wait instead of 20s
+
+                    // Wait for the plugin to stop (exception should trigger it) then reconnect
+                    await context.WaitForStatusAsync(ePluginStatus.STOPPED, TimeSpan.FromSeconds(5));
+
+                    // Wait for reconnection to complete
                     await context.WaitForStatusAsync(ePluginStatus.STARTED, TimeSpan.FromSeconds(10));
-                    
+
                     statusMonitor.Dispose();
-                    
+
                     output.WriteLine($"  ✓ {exceptionCount} exceptions → {reconnectionDetected} reconnections");
-                    
+
                     if (reconnectionDetected > 2)
                         results.AddWarning($"TEST 6: {reconnectionDetected} reconnections (expected ≤2)");
-                    
+
                     results.PassTest("Reconnection Coalescing");
                     output.WriteLine("  ✅ PASSED");
                 }
@@ -447,7 +456,7 @@ namespace VisualHFT.DataRetriever.TestingFramework.TestCases
                     statusMonitor.Dispose();
                     HelperOrderBook.Instance.Unsubscribe(exceptionTrigger);
                     await context.DataRetriever.StopAsync();
-                    await Task.Delay(500); // ✅ REDUCED: 500ms instead of 1000ms
+                    await Task.Delay(500);
                 }
             }
             catch (Exception ex)
@@ -506,12 +515,9 @@ namespace VisualHFT.DataRetriever.TestingFramework.TestCases
                         throw new TimeoutException($"Plugin did not start within {config.StatusChangeTimeout}");
                     }
                     output.WriteLine($"✓ {context.PluginName} started successfully");
-                    
-                    // Wait for initial data
-                    output.WriteLine($"⏳ Waiting {config.InitialDataDelay} for initial data...");
-                    await Task.Delay(config.InitialDataDelay);
-                    
-                    var dataReceived = await context.WaitForDataAsync(config.DataReceptionTimeout);
+
+                    // Wait for initial data (up to InitialDataDelay, exit early if data arrives)
+                    var dataReceived = await context.WaitForDataAsync(config.InitialDataDelay + config.DataReceptionTimeout);
                     if (!dataReceived)
                     {
                         throw new Exception($"No order book data received within {config.DataReceptionTimeout}");
